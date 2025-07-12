@@ -7,7 +7,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class HelloController {
 
   @GetMapping("/hello")
-  public String hello() {
-    return "Hello from Dockerized Spring Boot App!";
+  public String home() {
+    return "hello welcome to the world";
   }
 }
