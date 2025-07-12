@@ -34,6 +34,12 @@ public class HomeController {
         return "checkout";
     }
 
+    // Checkout Page
+    @GetMapping("/shop")
+    public String shop() {
+        return "shop";
+    }
+
     // Contact Page
     @GetMapping("/contact")
     public String contact() {
