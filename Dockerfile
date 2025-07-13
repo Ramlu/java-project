@@ -1,42 +1,29 @@
-# ----------- Builder Stage ------------
-FROM maven:3.8.4-openjdk-17-slim AS builder
+# ------------ Stage 1: Build using Maven ------------
+FROM maven:3.9.6-eclipse-temurin-17 AS builder
 
-# Set the working directory in the container
 WORKDIR /app
 
-# Copy pom.xml and mvnw (Maven wrapper) to leverage Docker cache
-COPY mvnw . 
-COPY .mvn .mvn
-COPY pom.xml . 
+# Copy the pom.xml and download dependencies (layer caching)
+COPY pom.xml .
+RUN mvn dependency:go-offline -B
 
-# Make sure mvnw is executable (if you're using it)
-RUN chmod +x mvnw
+# Copy the rest of the application source code
+COPY src ./src
 
-# Download dependencies and pre-build (go offline)
-RUN ./mvnw dependency:go-offline -B
+# Build the Spring Boot app (jar file)
+RUN mvn clean package -DskipTests
 
-# Copy source code
-COPY src src
+# ------------ Stage 2: Create minimal runtime image ------------
+FROM eclipse-temurin:17-jre-alpine
 
-# Build the application and package it
-RUN ./mvnw package -DskipTests
+# Create a non-root user for running the app
+RUN addgroup -S spring && adduser -S spring -G spring
+USER spring:spring
 
-# ----------- Runtime Stage (Distroless) ------------
-FROM gcr.io/distroless/java17
+WORKDIR /home/spring
 
-# Set the working directory for the runtime image
-WORKDIR /app
-
-# Create non-root user for security
-RUN addgroup --system appgroup && adduser --system appuser --ingroup appgroup
-USER appuser
-
-# Copy the built JAR from the builder stage
+# Copy the built jar file from the builder stage
 COPY --from=builder /app/target/*.jar app.jar
 
-# Expose port 8080 for the application
-EXPOSE 8080
-
-# Start the application using the JAR file
+# Run the application
 ENTRYPOINT ["java", "-jar", "app.jar"]
-

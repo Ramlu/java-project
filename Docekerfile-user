@@ -1,0 +1,47 @@
+# ------------ Stage 1: Build using Maven ------------
+FROM maven:3.9.6-eclipse-temurin-17 AS builder
+
+WORKDIR /app
+
+# Copy only the pom.xml first, then download dependencies (layer caching)
+COPY pom.xml .
+RUN mvn dependency:go-offline -B
+
+# Copy the rest of the application source code
+COPY src ./src
+
+# Build the Spring Boot app (jar file)
+RUN mvn clean package -DskipTests
+
+# ------------ Stage 2: Create the directory and set permissions in a debian image ------------
+FROM debian:bullseye-slim AS runtime
+
+# Create a non-root user with UID 1001 and GID 1001
+RUN groupadd -g 1001 spring && useradd -m -u 1001 -g spring spring
+
+# Create the working directory and set ownership
+RUN mkdir -p /home/spring && chown -R 1001:1001 /home/spring
+
+# Copy the built jar file from the builder stage and ensure the right permissions
+COPY --from=builder /app/target/*.jar /home/spring/app.jar
+
+# Set correct ownership of the .jar file in this stage where shell is available
+RUN chown 1001:1001 /home/spring/app.jar
+
+# ------------ Stage 3: Create minimal runtime image ------------
+FROM gcr.io/distroless/java17-debian11:latest
+
+# Copy the user configuration files from the runtime stage
+COPY --from=runtime /etc/passwd /etc/group /etc/shadow /etc/gshadow /etc/login.defs /etc/subuid /etc/subgid /etc/passwd-
+
+# Copy the directory structure from runtime stage
+COPY --from=runtime /home/spring /home/spring
+
+# Set up the working directory for the non-root user
+WORKDIR /home/spring
+
+# Switch to the non-root user with UID 1001 and GID 1001
+USER 1001:1001
+
+# Run the application as the non-root user
+ENTRYPOINT ["java", "-jar", "/home/spring/app.jar"]
